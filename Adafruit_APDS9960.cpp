@@ -598,7 +598,7 @@ uint8_t Adafruit_APDS9960::readGestureNonBlocking() {
 //		LEFT / RIGHT
 		if	(RLcase != APDS9960_CASE_WAIT)	{
 
-#ifdef	APDS9960_DEBUG_GEST_RL && !APDS9960_DEBUG_GEST_RAW
+#ifdef	APDS9960_DEBUG_GEST_RL
 			debugOut->print(F(" RIGHT / LEFT diff "));
 			debugOut->println(left_right_diff);
 #endif
@@ -673,7 +673,7 @@ uint8_t Adafruit_APDS9960::readGestureNonBlocking() {
 //		UP / DOWN
 		if	(UDcase != APDS9960_CASE_WAIT)	{
 
-#ifdef	APDS9960_DEBUG_GEST_UD  && !APDS9960_DEBUG_GEST_RAW
+#ifdef	APDS9960_DEBUG_GEST_UD
 
 			debugOut->print(F(" UP    / DOWN diff "));
 			debugOut->println(up_down_diff);
