@@ -16,3 +16,6 @@ BSD license, check license.txt for more information
 All text above must be included in any redistribution
 
 To install, use the Arduino Library Manager and search for "Adafruit APDS9960 Library" and install the library.
+
+Added some functions for gesture reading, original readGesture() after first gesture detected did not exit the mode in sensor thus kept reading FIFO. delay(30) blocked the mani loop as well. New function checkGesture() can be placed in loop() and will call readGestureNonBlocking() every 10 ms, or readGestureNonBlocking() can be called withing some reasonable short intervals. Running i2c at 100 kHz it will take around 4 to 5 ms for one read cycle from sensor. Running i2c at 400 kHz this time is shorten.
+Added also support for Teensy boards.
