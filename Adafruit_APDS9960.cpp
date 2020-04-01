@@ -748,7 +748,6 @@ uint8_t Adafruit_APDS9960::readGestureNonBlocking() {
 		}	else	{
 			UDcase = APDS9960_CASE_DIR;
 			RLcase = APDS9960_CASE_DIR;
-			digitalWrite(LED_BUILTIN, LOW);
 		}
 			
 #if defined(APDS9960_DEBUG_GEST_UD) || defined (APDS9960_DEBUG_GEST_RAW)
