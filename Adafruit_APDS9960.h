@@ -153,6 +153,35 @@ enum {
   APDS9960_GGAIN_8 = 0x03, // Gain 8x
 };
 
+
+/** Gesture Led drive current */
+enum {
+  APDS9960_GLDRIVE_100 = 0x00, // 100 mA
+  APDS9960_GLDRIVE_050 = 0x01, // 50 mA
+  APDS9960_GLDRIVE_025 = 0x02, // 25 mA
+  APDS9960_GLDRIVE_012 = 0x03, // 12,5 mA
+};
+
+/** Gesture Led wait time */
+enum {
+  APDS9960_GWTIME_00MS = 0x00, // 0 ms
+  APDS9960_GWTIME_03MS = 0x01, // 2,8 ms
+  APDS9960_GWTIME_05MS = 0x02, // 5,6 ms
+  APDS9960_GWTIME_08MS = 0x03, // 8,4 ms
+  APDS9960_GWTIME_14MS = 0x04, // 14 ms
+  APDS9960_GWTIME_22MS = 0x05, // 22,4 ms
+  APDS9960_GWTIME_31MS = 0x06, // 30,8 ms
+  APDS9960_GWTIME_39MS = 0x07, // 39,2 ms  
+};
+
+/** Gesture persistence */
+enum {
+  APDS9960_GEXPERS_1 = 0x00, // 1st 'gesture end' occurrence results in gesture state machine exit.
+  APDS9960_GEXPERS_2 = 0x01, // 2nd 'gesture end' occurrence results in gesture state machine exit.
+  APDS9960_GEXPERS_4 = 0x02, // 4th 'gesture end' occurrence results in gesture state machine exit.
+  APDS9960_GEXPERS_7 = 0x03, // 7th 'gesture end' occurrence results in gesture state machine exit.
+};
+
 /** Pulse Lenghts */
 enum {
   APDS9960_GPULSE_4US = 0x00,  // Pulse 4us
@@ -161,10 +190,20 @@ enum {
   APDS9960_GPULSE_32US = 0x03, // Pulse 32us
 };
 
-#define APDS9960_UP 0x01    /**< Gesture Up */
-#define APDS9960_DOWN 0x02  /**< Gesture Down */
-#define APDS9960_LEFT 0x03  /**< Gesture Left */
-#define APDS9960_RIGHT 0x04 /**< Gesture Right */
+#define APDS9960_UP 	0b00000001	/**< Gesture Up */
+#define APDS9960_DOWN 	0b00000010	/**< Gesture Down */
+#define APDS9960_LEFT 	0b00000100	/**< Gesture Left */
+#define APDS9960_RIGHT 	0b00001000	/**< Gesture Right */
+
+#define	APDS9960_MAX_GEST_CYCLES 30
+#define	APDS9960_MAX_GEST_TIMEOUT 60
+
+#define	APDS9960_CASE_DIR	0
+#define	APDS9960_CASE_RL_1	1
+#define	APDS9960_CASE_LR_1	2
+#define	APDS9960_CASE_UD_1	3
+#define	APDS9960_CASE_DU_1	4
+#define APDS9960_CASE_WAIT 	254
 
 /*!
  *  @brief  Class that stores state and functions for interacting with
@@ -176,7 +215,13 @@ public:
   ~Adafruit_APDS9960(){};
 
   boolean begin(uint16_t iTimeMS = 10, apds9960AGain_t = APDS9960_AGAIN_4X,
+#if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MKL26Z64__) || \
+    defined(__MK64FX512__) || defined(__MK66FX1M0__) // For Teensy 3.0/3.1-3.2/LC/3.5/3.6
+				        uint8_t addr = APDS9960_ADDRESS, i2c_t3 *theWire = &Wire);	
+#else
                 uint8_t addr = APDS9960_ADDRESS, TwoWire *theWire = &Wire);
+#endif	  
+  
   void setADCIntegrationTime(uint16_t iTimeMS);
   float getADCIntegrationTime();
   void setADCGain(apds9960AGain_t gain);
@@ -197,15 +242,22 @@ public:
 
   // gesture
   void enableGesture(boolean en = true);
-  bool gestureValid();
   void setGestureDimensions(uint8_t dims);
   void setGestureFIFOThreshold(uint8_t thresh);
   void setGestureGain(uint8_t gain);
+  void setGestureGainWaitLeddrive(uint8_t gain, uint8_t drive, uint8_t waittime);
   void setGestureProximityThreshold(uint8_t thresh);
-  void setGestureOffset(uint8_t offset_up, uint8_t offset_down,
-                        uint8_t offset_left, uint8_t offset_right);
-  uint8_t readGesture();
+  void setGesturePersistance(uint8_t pers);
+  void setGestureExitThreshold(uint8_t thresh);
+  void setGestureOffset(int8_t offset_up, int8_t offset_down, int8_t offset_left, int8_t offset_right);
   void resetCounts();
+  void clearGestureBuffers();
+  bool gestureValid();
+  bool gestureInt();
+  uint8_t readGesture();
+  uint8_t readGestureNonBlocking();
+  uint8_t readGestureNonBlockingBKP();
+  uint8_t checkGesture();
 
   // light & color
   void enableColor(boolean en = true);
@@ -223,7 +275,12 @@ public:
 
 private:
   uint8_t _i2caddr;
-  TwoWire *_wire;
+ #if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MKL26Z64__) || \
+    defined(__MK64FX512__) || defined(__MK66FX1M0__) // For Teensy 3.0/3.1-3.2/LC/3.5/3.6
+	i2c_t3 *_wire;
+#else
+    TwoWire *_wire;
+#endif	
 
   uint32_t read32(uint8_t reg);
   uint16_t read16(uint8_t reg);
@@ -236,14 +293,29 @@ private:
 
   uint8_t UCount;
   uint8_t DCount;
-
   uint8_t LCount;
   uint8_t RCount;
 
   uint8_t read(uint8_t reg, uint8_t *buf, uint8_t num);
   void write(uint8_t reg, uint8_t *buf, uint8_t num);
-  void _i2c_init();
+//  void _i2c_init();
 
+  void resetRLCounts();
+  void resetUDCounts();
+  
+  uint8_t	gestCycles = 0;
+  uint8_t	RLcase = 0;
+  uint8_t	RLtimeout = 0;
+  uint8_t	RLhelper = 0;
+  uint8_t	UDcase = 0;
+  uint8_t	UDtimeout = 0;
+  uint8_t	UDhelper = 0;
+  uint32_t	gestLastMillis = 0;
+  
+  void	debugPrintNumber(uint8_t number);
+  
+  Print* debugOut;
+  
   struct enable {
 
     // power on
