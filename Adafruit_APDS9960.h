@@ -205,6 +205,12 @@ enum {
 #define	APDS9960_CASE_DU_1	4
 #define APDS9960_CASE_WAIT 	254
 
+/*!	use with setDebugStream function	*/
+//#define	APDS9960_DEBUG_GEST_RL
+//#define	APDS9960_DEBUG_GEST_UD
+//#define	APDS9960_DEBUG_GEST_RAW
+//#define	APDS9960_DEBUG_GEST_PLOTER
+
 /*!
  *  @brief  Class that stores state and functions for interacting with
  *          APDS9960 Sensor
