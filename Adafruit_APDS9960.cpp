@@ -497,8 +497,7 @@ uint8_t Adafruit_APDS9960::readGestureNonBlocking() {
 	uint8_t gestureReceived = 0;
 	
 	if (gestureValid())	{
-		
-		digitalWrite(LED_BUILTIN, HIGH);
+
 		uint8_t toRead, bytesRead;
 		uint8_t buf[128];
 		int up_down_diff = 0;
