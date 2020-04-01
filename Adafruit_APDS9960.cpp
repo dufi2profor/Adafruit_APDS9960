@@ -83,9 +83,14 @@ void Adafruit_APDS9960::enable(boolean en) {
  *  @return True if initialization was successful, otherwise false.
  */
 boolean Adafruit_APDS9960::begin(uint16_t iTimeMS, apds9960AGain_t aGain,
-                                 uint8_t addr, TwoWire *theWire) {
+#if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MKL26Z64__) || \
+    defined(__MK64FX512__) || defined(__MK66FX1M0__) 			// For Teensy 3.0/3.1-3.2/LC/3.5/3.6
+      uint8_t addr, i2c_t3 *theWire = &Wire) {	
+#else
+      uint8_t addr, TwoWire *theWire) {
+#endif	
   _wire = theWire;
-  _i2c_init();
+//  _i2c_init();
   _i2caddr = addr;
 
   /* Make sure we're actually connected */
@@ -115,13 +120,14 @@ boolean Adafruit_APDS9960::begin(uint16_t iTimeMS, apds9960AGain_t aGain,
 
   // default to all gesture dimensions
   setGestureDimensions(APDS9960_DIMENSIONS_ALL);
-  setGestureFIFOThreshold(APDS9960_GFIFO_4);
-  setGestureGain(APDS9960_GGAIN_4);
-  setGestureProximityThreshold(50);
+  setGestureFIFOThreshold(APDS9960_GFIFO_1);
+  setGestureGain(APDS9960_GGAIN_8);
+  setGestureProximityThreshold(2);
+  setGestureExitThreshold(20);
   resetCounts();
 
-  _gpulse.GPLEN = APDS9960_GPULSE_32US;
-  _gpulse.GPULSE = 9; // 10 pulses
+  _gpulse.GPLEN = APDS9960_GPULSE_8US;
+  _gpulse.GPULSE = 11; // 12 pulses
   this->write8(APDS9960_GPULSE, _gpulse.get());
 
   return true;
@@ -309,6 +315,16 @@ void Adafruit_APDS9960::setGestureDimensions(uint8_t dims) {
 }
 
 /*!
+ *  @brief  Sets gesture exit threshold
+ *  @param  thresh
+ *          Threshold
+ */
+void Adafruit_APDS9960::setGestureExitThreshold(uint8_t thresh) {
+//	see note on page 28 of manual
+  this->write8(APDS9960_GEXTH, thresh);
+}
+
+/*!
  *  @brief  Sets gesture FIFO Threshold
  *  @param  thresh
  *          Threshold (APDS9960_GFIFO_1, APDS9960_GFIFO_4, APDS9960_GFIFO_8,
@@ -450,6 +466,315 @@ uint8_t Adafruit_APDS9960::readGesture() {
       return gestureReceived;
     }
   }
+}
+
+/*!
+ *  @brief  Call this function in loop()
+ *			This function calls readGestureNonBlocking() every 10 ms
+ *  @return Received gesture (APDS9960_DOWN, APDS9960_UP, APDS9960_LEFT,
+ *          APDS9960_RIGHT)
+ */
+uint8_t	Adafruit_APDS9960::checkGesture()	{
+	
+	uint8_t	toReturn = 0;
+	
+	if	((millis() - gestLastMillis) > 9)	{
+		gestLastMillis = millis();
+		toReturn = readGestureNonBlocking();
+	}	
+
+	return toReturn;
+
+}
+
+/*!
+ *  @brief  Reads gesture cyclic, non blocking
+ *  @return Received gesture (APDS9960_DOWN, APDS9960_UP, APDS9960_LEFT,
+ *          APDS9960_RIGHT)
+ */
+uint8_t Adafruit_APDS9960::readGestureNonBlocking() {
+
+	uint8_t gestureReceived = 0;
+	
+	if (gestureValid())	{
+		
+		digitalWrite(LED_BUILTIN, HIGH);
+		uint8_t toRead, bytesRead;
+		uint8_t buf[128];
+		int up_down_diff = 0;
+		int left_right_diff = 0;
+
+//		toRead must be multiplied by 4, see datasheet on page 32
+//		One four-byte dataset is equivalent to a single count in GFLVL
+		toRead = this->read8(APDS9960_GFLVL);
+		
+// 		bytesRead is unused but- produces sideffects needed for readGesture to work
+		bytesRead = this->read(APDS9960_GFIFO_U, buf, toRead * 4);
+
+//		calculate average of UDLR received data for this cycle
+		uint16_t	Uavg = 0;
+		uint16_t	Davg = 0;
+		uint16_t	Lavg = 0;
+		uint16_t	Ravg = 0;
+		uint8_t adder = 0;
+
+#ifdef	APDS9960_DEBUG_GEST_RAW
+		debugOut->println(F("\nReceived FIFO data\n   U   D   L   R"));
+#endif
+		for	(byte i = 0; i < toRead; i++)	{
+			
+#ifdef	APDS9960_DEBUG_GEST_PLOTER
+		debugOut->print(buf[adder+0]);		//	UP
+		debugOut->print(F(" "));
+		debugOut->print(bufadder+1]);		//	DOWN
+		debugOut->print(F(" "));
+		debugOut->print(buf[adder+2]);		//	LEFT
+		debugOut->print(F(" "));		
+		debugOut->println(buf[adder+3]);	//	RIGHT
+	
+#endif
+
+#ifdef	APDS9960_DEBUG_GEST_RAW			
+			debugOut->print(F(" "));
+			debugPrintNumber(buf[adder+0]);
+			debugOut->print(F(" "));
+			debugPrintNumber(buf[adder+1]);
+			debugOut->print(F(" "));
+			debugPrintNumber(buf[adder+2]);
+			debugOut->print(F(" "));
+			debugPrintNumber(buf[adder+3]);
+			debugOut->println();
+#endif	
+
+			Uavg += buf[adder+0];
+			Davg += buf[adder+1];
+			Lavg += buf[adder+2];
+			Ravg += buf[adder+3];
+			adder += 4;
+		}
+
+		Uavg /= toRead;
+		Davg /= toRead;
+		Lavg /= toRead;
+		Ravg /= toRead;
+		
+		left_right_diff += Lavg - Ravg;
+		up_down_diff += Uavg - Davg;
+		
+//	now we have averaged data from this cycle
+#ifdef	APDS9960_DEBUG_GEST_RAW
+//	print them out, if needed
+		debugOut->println(F("Averaged FIFO data"));
+		debugOut->print(F(" "));
+		debugPrintNumber(Uavg);
+		debugOut->print(F(" "));
+		debugPrintNumber(Davg);
+		debugOut->print(F(" "));
+		debugPrintNumber(Lavg);
+		debugOut->print(F(" "));
+		debugPrintNumber(Ravg);
+		debugOut->print(F("\n  "));
+		debugOut->print(up_down_diff);	
+		debugOut->print(F("      "));
+		debugOut->println(left_right_diff);
+	
+#endif
+
+//	check, which FIFO pair was "first" so we will not evaluate two gestures together
+//	reason for this is that on cheap modules from aliexpress i have found that 
+// 	the pairs that were in 90° degree to the gesture pairs did not follow the curves as
+//	are drawed on page 17 in manual
+		if	(RLcase != APDS9960_CASE_WAIT && UDcase != APDS9960_CASE_WAIT)	{
+			if	(abs(left_right_diff) > abs(up_down_diff))	{
+				UDcase = APDS9960_CASE_WAIT;
+				UDtimeout = APDS9960_MAX_GEST_TIMEOUT;
+			}	else	{
+				RLcase = APDS9960_CASE_WAIT;
+				RLtimeout = APDS9960_MAX_GEST_TIMEOUT;
+			}
+		}
+
+//	=============================================================
+//		LEFT / RIGHT
+		if	(RLcase != APDS9960_CASE_WAIT)	{
+
+#ifdef	APDS9960_DEBUG_GEST_RL && !APDS9960_DEBUG_GEST_RAW
+			debugOut->print(F(" RIGHT / LEFT diff "));
+			debugOut->println(left_right_diff);
+#endif
+		  
+			switch (RLcase)	{
+				
+				case	APDS9960_CASE_DIR: {
+					if (left_right_diff > 0) {
+						RLcase = APDS9960_CASE_RL_1;
+						RLtimeout = APDS9960_MAX_GEST_TIMEOUT;
+					}
+					if (left_right_diff < 0) {
+						RLcase = APDS9960_CASE_LR_1;
+						RLtimeout = APDS9960_MAX_GEST_TIMEOUT;
+					}
+				} break;
+
+				
+				case	APDS9960_CASE_LR_1: {
+			
+					if (left_right_diff > 0) {
+						RLcase = APDS9960_CASE_WAIT;
+						gestureReceived |= APDS9960_LEFT;
+						RLtimeout = APDS9960_MAX_GEST_TIMEOUT;
+
+#ifdef	APDS9960_DEBUG_GEST_RL
+						debugOut->println(F("\n ------------------ "));
+						debugOut->println(F("|       LEFT       |"));
+						debugOut->println(F(" ------------------ \n"));
+#endif
+
+					}
+					
+				} break;
+			
+				
+				case	APDS9960_CASE_RL_1: {
+	
+					if (left_right_diff < 0) {
+						RLcase = APDS9960_CASE_WAIT;
+						gestureReceived |= APDS9960_RIGHT;
+						RLtimeout = APDS9960_MAX_GEST_TIMEOUT;
+
+#ifdef	APDS9960_DEBUG_GEST_RL
+						debugOut->println(F("\n ------------------ "));
+						debugOut->println(F("|      RIGHT       |"));
+						debugOut->println(F(" ------------------ \n"));
+#endif
+
+					}
+				} break;
+
+			}
+
+//	RLtimeout was set so check, when to scrap this gesture (unfinished gestures)			
+			if	(RLtimeout)	{
+				if	(RLtimeout < APDS9960_MAX_GEST_TIMEOUT - APDS9960_MAX_GEST_CYCLES)	{
+					
+#ifdef	APDS9960_DEBUG_GEST_RL
+					debugOut->println(F(" APDS9960_RL_CASE_WAIT"));
+#endif
+
+					RLcase = APDS9960_CASE_WAIT;
+					RLtimeout = APDS9960_MAX_GEST_TIMEOUT;
+				} 	else	{
+					RLtimeout--;
+				}
+			}
+		}
+
+//	=============================================================
+//		UP / DOWN
+		if	(UDcase != APDS9960_CASE_WAIT)	{
+
+#ifdef	APDS9960_DEBUG_GEST_UD  && !APDS9960_DEBUG_GEST_RAW
+
+			debugOut->print(F(" UP    / DOWN diff "));
+			debugOut->println(up_down_diff);
+#endif
+		  
+			switch (UDcase)	{
+				
+				case	APDS9960_CASE_DIR: {
+					if (up_down_diff > 0) {
+						UDcase = APDS9960_CASE_DU_1;
+						UDtimeout = APDS9960_MAX_GEST_TIMEOUT;
+					}
+					if (up_down_diff < 0) {
+						UDcase = APDS9960_CASE_UD_1;
+						UDtimeout = APDS9960_MAX_GEST_TIMEOUT;
+					}
+				} break;
+
+				
+				case	APDS9960_CASE_UD_1: {
+			
+					if (up_down_diff > 0) {
+						UDcase = APDS9960_CASE_WAIT;
+						gestureReceived |= APDS9960_UP;
+						UDtimeout = APDS9960_MAX_GEST_TIMEOUT;
+#ifdef	APDS9960_DEBUG_GEST_UD
+						debugOut->println(F("\n ------------------ "));
+						debugOut->println(F("|        UP        |"));
+						debugOut->println(F(" ------------------ \n"));
+#endif					
+					}
+					
+				} break;
+			
+				
+				case	APDS9960_CASE_DU_1: {
+	
+					if (up_down_diff < 0) {
+						UDcase = APDS9960_CASE_WAIT;
+						gestureReceived |= APDS9960_DOWN;
+						UDtimeout = APDS9960_MAX_GEST_TIMEOUT;
+#ifdef	APDS9960_DEBUG_GEST_UD
+						debugOut->println(F("\n ------------------ "));
+						debugOut->println(F("|       DOWN       |"));
+						debugOut->println(F(" ------------------ \n"));
+#endif		
+					}
+				} break;
+
+			}
+
+//	RLtimeout was set so check, when to scrap this gesture (unfinished gestures)			
+			if	(UDtimeout)	{
+				if	(UDtimeout < APDS9960_MAX_GEST_TIMEOUT - APDS9960_MAX_GEST_CYCLES)	{
+					
+#ifdef	APDS9960_DEBUG_GEST_UD
+					debugOut->println(F(" APDS9960_UD_CASE_WAIT"));
+#endif	
+
+					UDcase = APDS9960_CASE_WAIT;
+					UDtimeout = APDS9960_MAX_GEST_TIMEOUT;
+				} 	else	{
+					UDtimeout--;
+				}
+			}
+		} 
+
+//	APDS9960 does not have any data in FIFO so now make small delay
+	}	else	{
+
+		if	(UDtimeout)	 {
+			UDtimeout--;
+		}	else	{
+			UDcase = APDS9960_CASE_DIR;
+			RLcase = APDS9960_CASE_DIR;
+			digitalWrite(LED_BUILTIN, LOW);
+		}
+			
+#if defined(APDS9960_DEBUG_GEST_UD) || defined (APDS9960_DEBUG_GEST_RAW)
+		if	(UDtimeout == 1)	{
+			debugOut->println(F(" UD timeout end"));
+		}
+#endif			
+
+		if	(RLtimeout)	 {
+			RLtimeout--;
+		}	else	{
+			RLcase = APDS9960_CASE_DIR;
+			UDcase = APDS9960_CASE_DIR;
+		}
+			
+#if defined(APDS9960_DEBUG_GEST_RL) || defined (APDS9960_DEBUG_GEST_RAW)
+		if	(RLtimeout == 1)	{
+			debugOut->println(F(" RL timeout end"));
+		}
+#endif
+
+	}
+	
+	return gestureReceived;
+		
 }
 
 /*!
@@ -690,14 +1015,15 @@ uint8_t Adafruit_APDS9960::read(uint8_t reg, uint8_t *buf, uint8_t num) {
   // on arduino we need to read in 32 byte chunks
   while (pos < num && !eof) {
 
-    uint8_t read_now = min(32, num - pos);
+//    uint8_t read_now = min(32, num - pos);
+	
     _wire->beginTransmission((uint8_t)_i2caddr);
-    _wire->write((uint8_t)reg + pos);
+    _wire->write((uint8_t)reg);
     _wire->endTransmission();
 
-    _wire->requestFrom((uint8_t)_i2caddr, read_now);
+    _wire->requestFrom((uint8_t)_i2caddr, num);
 
-    for (int i = 0; i < read_now; i++) {
+    for (int i = 0; i < num; i++) {
       if (!_wire->available()) {
         eof = true;
         break;
@@ -723,4 +1049,38 @@ void Adafruit_APDS9960::write(uint8_t reg, uint8_t *buf, uint8_t num) {
   _wire->write((uint8_t)reg);
   _wire->write((uint8_t *)buf, num);
   _wire->endTransmission();
+}
+
+/*!
+ *  @brief  Prints out number with leading zeroes
+ *			printed number, when lower than 100 for example
+ *			will instead of 0 have space char
+ *  @param  number
+ *          Number to print in XXX format
+ *	@example
+ *	Received FIFO data
+ *	  U   D   L   R
+ *	        149 157
+ *	        151 152
+ *	        144 139
+ *	        137 122
+ *	        141 111
+ *	        132  97
+ *	        125  83
+ *	Averaged FIFO data
+ *	  U   D   L   R
+ *	        139 123
+ */
+void Adafruit_APDS9960::debugPrintNumber(uint8_t number)	{
+	if (number < 100)	{
+		debugOut->print(F(" "));
+	}
+	if (number < 10)	{
+		debugOut->print(F(" "));
+	}
+	if (number == 0) {
+		debugOut->print(F(" "));	
+	} else {
+		debugOut->print(number);
+	}
 }
