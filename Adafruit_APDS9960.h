@@ -217,9 +217,9 @@ public:
   boolean begin(uint16_t iTimeMS = 10, apds9960AGain_t = APDS9960_AGAIN_4X,
 #if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MKL26Z64__) || \
     defined(__MK64FX512__) || defined(__MK66FX1M0__) // For Teensy 3.0/3.1-3.2/LC/3.5/3.6
-				        uint8_t addr = APDS9960_ADDRESS, i2c_t3 *theWire = &Wire);	
+	uint8_t addr = APDS9960_ADDRESS, i2c_t3 *theWire = &Wire);	
 #else
-                uint8_t addr = APDS9960_ADDRESS, TwoWire *theWire = &Wire);
+	uint8_t addr = APDS9960_ADDRESS, TwoWire *theWire = &Wire);
 #endif	  
   
   void setADCIntegrationTime(uint16_t iTimeMS);
@@ -279,7 +279,7 @@ private:
     defined(__MK64FX512__) || defined(__MK66FX1M0__) // For Teensy 3.0/3.1-3.2/LC/3.5/3.6
 	i2c_t3 *_wire;
 #else
-    TwoWire *_wire;
+	TwoWire *_wire;
 #endif	
 
   uint32_t read32(uint8_t reg);
