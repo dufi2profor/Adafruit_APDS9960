@@ -48,6 +48,15 @@
 #include "Adafruit_APDS9960.h"
 
 /*!
+ *  @brief  Sets debug out
+ *  @param  x
+ *          Serial
+ */
+void Adafruit_APDS9960::setDebugStream(Print* out) {
+	debugOut = out;
+}
+
+/*!
  *  @brief  Implements missing powf function
  *  @param  x
  *          Base number
