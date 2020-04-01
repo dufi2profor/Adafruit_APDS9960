@@ -298,7 +298,7 @@ private:
 
   uint8_t read(uint8_t reg, uint8_t *buf, uint8_t num);
   void write(uint8_t reg, uint8_t *buf, uint8_t num);
-//  void _i2c_init();
+  void _i2c_init();
 
   void resetRLCounts();
   void resetUDCounts();
